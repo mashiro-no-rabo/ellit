@@ -11,22 +11,66 @@ use std::{
 };
 use tui::{
   backend::CrosstermBackend,
-  layout::{Constraint, Direction, Layout},
+  layout::{Alignment, Constraint, Direction, Layout},
   style::{Color, Style},
-  widgets::{Block, Borders, Row, Table, TableState},
+  text::Text,
+  widgets::{Block, Borders, Paragraph, Row, Table, TableState, Wrap},
   Terminal,
 };
 
 #[derive(Debug)]
+struct AppState {
+  offset: u64,
+  count: usize,
+  selected: usize,
+  message_height: u32,
+  // levels
+  info: bool,
+  notice: bool,
+  warning: bool,
+  error: bool,
+}
+
+impl Default for AppState {
+  fn default() -> Self {
+    Self {
+      offset: 0,
+      count: 0,
+      selected: 0,
+      message_height: 10,
+      info: false,
+      notice: false,
+      warning: true,
+      error: true,
+    }
+  }
+}
+
+impl AppState {
+  fn levels(&self) -> String {
+    let mut lvls = vec![];
+    if self.info {
+      lvls.push("0");
+    }
+    if self.notice {
+      lvls.push("1");
+    }
+    if self.warning {
+      lvls.push("2");
+    }
+    if self.error {
+      lvls.push("3");
+    }
+    lvls.join(",")
+  }
+}
+
+#[derive(Debug)]
 struct Log {
-  id: i64,
   time: f64,
-  host: String,
   pid: u32,
   level: u8,
-  typ: u8,
   channel: String,
-  process: String,
   message: String,
 }
 
@@ -36,6 +80,7 @@ fn main() -> Result<()> {
     None => bail!("Usage: ellit [path to .lsw file]"),
   };
   let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+  let mut app = AppState::default();
 
   // setup terminal
   enable_raw_mode()?;
@@ -47,7 +92,7 @@ fn main() -> Result<()> {
   terminal.clear()?;
 
   loop {
-    terminal.draw(|mut f| {
+    terminal.draw(|f| {
       let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(5), Constraint::Length(10), Constraint::Length(3)].as_ref())
@@ -57,22 +102,24 @@ fn main() -> Result<()> {
       let normal_style = Style::default().fg(Color::White);
       let header = ["   Time", "Pid", "Message"];
       let mut stmt = conn
-        .prepare("SELECT rowid, time, host, pid, level, type, channel, process, message FROM log")
+        .prepare(&format!(
+          "SELECT time, pid, level, channel, message FROM log WHERE level IN ({}) LIMIT (?) OFFSET (?)",
+          app.levels()
+        ))
         .unwrap();
       let log_iter = stmt
-        .query_map(params![], |row| {
-          Ok(Log {
-            id: row.get(0)?,
-            time: row.get(1)?,
-            host: row.get(2)?,
-            pid: row.get(3)?,
-            level: row.get(4)?,
-            typ: row.get(5)?,
-            channel: row.get(6)?,
-            process: row.get(7)?,
-            message: row.get(8)?,
-          })
-        })
+        .query_map(
+          params![(chunks[0].height - 1).to_string(), app.offset.to_string()],
+          |row| {
+            Ok(Log {
+              time: row.get(0)?,
+              pid: row.get(1)?,
+              level: row.get(2)?,
+              channel: row.get(3)?,
+              message: row.get(4)?,
+            })
+          },
+        )
         .unwrap();
       let logs: Vec<[String; 3]> = log_iter
         .map(|l| l.unwrap())
@@ -94,15 +141,23 @@ fn main() -> Result<()> {
         .highlight_style(selected_style)
         .highlight_symbol(">> ")
         .widths(&[Constraint::Length(23), Constraint::Length(8), Constraint::Min(10)]);
+
       let mut ts = TableState::default();
-      ts.select(Some(1));
+      ts.select(Some(app.selected));
       f.render_stateful_widget(t, chunks[0], &mut ts);
 
-      let block = Block::default().title("- Message ").borders(Borders::TOP);
-      f.render_widget(block, chunks[1]);
+      let msg = logs.get(app.selected).unwrap()[2].clone();
+      let msg_disp = Paragraph::new(Text::from(msg.as_ref()))
+        .style(Style::default().fg(Color::White))
+        .block(Block::default().borders(Borders::TOP))
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: true });
+      f.render_widget(msg_disp, chunks[1]);
 
-      let block = Block::default().title(" Nodes ").borders(Borders::ALL);
+      let block = Block::default().title(" Ellit ").borders(Borders::ALL);
       f.render_widget(block, chunks[2]);
+
+      app.count = logs.len();
     })?;
 
     match block_wait_action() {
@@ -112,7 +167,37 @@ fn main() -> Result<()> {
         terminal.show_cursor()?;
         break;
       }
-      _ => {}
+      Some(Action::NextLog) => {
+        app.selected += 1;
+        if app.selected >= app.count {
+          app.selected = app.count - 1
+        }
+      }
+      Some(Action::PrevLog) => match app.selected.checked_sub(1) {
+        Some(x) => app.selected = x,
+        None => app.selected = 0,
+      },
+      Some(Action::TopLog) => {
+        app.offset = 0;
+      }
+      Some(Action::BottomLog) => {
+        //
+      }
+      Some(Action::ToggleInfo) => {
+        app.info ^= true;
+      }
+      Some(Action::ToggleNotice) => {
+        app.notice ^= true;
+      }
+      Some(Action::ToggleWarning) => {
+        app.warning ^= true;
+      }
+      Some(Action::ToggleError) => {
+        app.error ^= true;
+      }
+      None => {
+        // handle resize event
+      }
     }
   }
 
@@ -120,6 +205,14 @@ fn main() -> Result<()> {
 }
 
 enum Action {
+  NextLog,
+  PrevLog,
+  TopLog,
+  BottomLog,
+  ToggleInfo,
+  ToggleNotice,
+  ToggleWarning,
+  ToggleError,
   Quit,
 }
 
@@ -132,6 +225,38 @@ fn block_wait_action() -> Option<Action> {
         code: KeyCode::Char('q'),
         modifiers: _,
       }) => break Some(Action::Quit),
+      Event::Key(KeyEvent {
+        code: KeyCode::Char('j'),
+        modifiers: _,
+      }) => break Some(Action::NextLog),
+      Event::Key(KeyEvent {
+        code: KeyCode::Char('k'),
+        modifiers: _,
+      }) => break Some(Action::PrevLog),
+      Event::Key(KeyEvent {
+        code: KeyCode::Home,
+        modifiers: _,
+      }) => break Some(Action::TopLog),
+      Event::Key(KeyEvent {
+        code: KeyCode::End,
+        modifiers: _,
+      }) => break Some(Action::BottomLog),
+      Event::Key(KeyEvent {
+        code: KeyCode::Char('1'),
+        modifiers: _,
+      }) => break Some(Action::ToggleInfo),
+      Event::Key(KeyEvent {
+        code: KeyCode::Char('2'),
+        modifiers: _,
+      }) => break Some(Action::ToggleNotice),
+      Event::Key(KeyEvent {
+        code: KeyCode::Char('3'),
+        modifiers: _,
+      }) => break Some(Action::ToggleWarning),
+      Event::Key(KeyEvent {
+        code: KeyCode::Char('4'),
+        modifiers: _,
+      }) => break Some(Action::ToggleError),
       Event::Resize(_, _) => break None,
       _ => {}
     }

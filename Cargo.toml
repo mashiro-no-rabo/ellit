@@ -9,5 +9,5 @@ edition = "2018"
 rusqlite = { version = "0.24", features = ["bundled"] }
 anyhow = "1.0"
 crossterm = "0.17"
-tui = { version = "0.9", default-features = false, features = ['crossterm'] }
+tui = { version = "0.10", default-features = false, features = ['crossterm'] }
 chrono = { version = "0.4", features = ["alloc"] }
