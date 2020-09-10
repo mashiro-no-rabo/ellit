@@ -13,16 +13,16 @@ use tui::{
   backend::CrosstermBackend,
   layout::{Alignment, Constraint, Direction, Layout},
   style::{Color, Style},
-  text::Text,
-  widgets::{Block, Borders, Paragraph, Row, Table, TableState, Wrap},
+  text::{Span, Text},
+  widgets::{Block, Borders, Paragraph, Row, Table, TableState, Tabs, Wrap},
   Terminal,
 };
 
 #[derive(Debug)]
-struct AppState {
+struct App {
   offset: u64,
   count: usize,
-  selected: usize,
+  selected: usize, // TODO: deal with empty result
   message_height: u32,
   // levels
   info: bool,
@@ -31,7 +31,7 @@ struct AppState {
   error: bool,
 }
 
-impl Default for AppState {
+impl Default for App {
   fn default() -> Self {
     Self {
       offset: 0,
@@ -46,7 +46,7 @@ impl Default for AppState {
   }
 }
 
-impl AppState {
+impl App {
   fn levels(&self) -> String {
     let mut lvls = vec![];
     if self.info {
@@ -80,7 +80,7 @@ fn main() -> Result<()> {
     None => bail!("Usage: ellit [path to .lsw file]"),
   };
   let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-  let mut app = AppState::default();
+  let mut app = App::default();
 
   // setup terminal
   enable_raw_mode()?;
@@ -154,8 +154,29 @@ fn main() -> Result<()> {
         .wrap(Wrap { trim: true });
       f.render_widget(msg_disp, chunks[1]);
 
-      let block = Block::default().title(" Ellit ").borders(Borders::ALL);
-      f.render_widget(block, chunks[2]);
+      let mut lvls = vec![];
+      if app.info {
+        lvls.push(Span::styled("[1] INFO", Style::default().bg(Color::Gray).fg(Color::White)).into())
+      } else {
+        lvls.push(Span::raw("[1] INFO").into())
+      }
+      if app.notice {
+        lvls.push(Span::styled("[2] NOTICE", Style::default().bg(Color::Cyan).fg(Color::Black)).into())
+      } else {
+        lvls.push(Span::raw("[2] NOTICE").into())
+      }
+      if app.warning {
+        lvls.push(Span::styled("[3] WARN", Style::default().bg(Color::Yellow).fg(Color::White)).into())
+      } else {
+        lvls.push(Span::raw("[3] WARN").into())
+      }
+      if app.error {
+        lvls.push(Span::styled("[4] ERROR", Style::default().bg(Color::Red).fg(Color::White)).into())
+      } else {
+        lvls.push(Span::raw("[4] ERROR").into())
+      }
+      let tabs = Tabs::new(lvls).block(Block::default().title(" Ellit ").borders(Borders::ALL));
+      f.render_widget(tabs, chunks[2]);
 
       app.count = logs.len();
     })?;
