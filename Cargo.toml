@@ -1,0 +1,12 @@
+[package]
+name = "ellit"
+description = "EVE LogLite in terminal"
+version = "0.1.0"
+authors = ["LOU Xun <aquarhead@ela.build>"]
+edition = "2018"
+
+[dependencies]
+rusqlite = { version = "0.24", features = ["bundled"] }
+anyhow = "1.0"
+crossterm = "0.17"
+tui = { version = "0.9", default-features = false, features = ['crossterm'] }
