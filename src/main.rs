@@ -14,7 +14,7 @@ use tui::{
   layout::{Alignment, Constraint, Direction, Layout},
   style::{Color, Style},
   text::{Span, Text},
-  widgets::{Block, Borders, Paragraph, Row, Table, TableState, Tabs, Wrap},
+  widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState, Tabs, Wrap},
   Terminal,
 };
 
@@ -100,7 +100,7 @@ fn main() -> Result<()> {
 
       let selected_style = Style::default().fg(Color::Green);
       let normal_style = Style::default().fg(Color::White);
-      let header = ["   Time", "Pid", "Message"];
+
       let mut stmt = conn
         .prepare(&format!(
           "SELECT time, pid, level, channel, message FROM log WHERE level IN ({}) LIMIT (?) OFFSET (?)",
@@ -132,11 +132,12 @@ fn main() -> Result<()> {
           ]
         })
         .collect();
-      let rows = logs.iter().map(|r| Row::StyledData(r.iter(), normal_style));
+      let rows = logs
+        .iter()
+        .map(|log| Row::new(log.iter().map(|txt| Cell::from(txt.clone()).style(normal_style))));
 
-      let t = Table::new(header.iter(), rows)
-        .header_style(Style::default().fg(Color::Yellow))
-        .header_gap(0)
+      let t = Table::new(rows)
+        .header(Row::new(vec!["   Time", "Pid", "Message"]).style(Style::default().fg(Color::Yellow)))
         .column_spacing(1)
         .highlight_style(selected_style)
         .highlight_symbol(">> ")
