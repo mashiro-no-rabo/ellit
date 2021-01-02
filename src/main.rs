@@ -89,6 +89,8 @@ fn main() -> Result<()> {
   terminal.clear()?;
 
   loop {
+    let mut log_page_size = 0;
+
     terminal.draw(|f| {
       let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -98,6 +100,8 @@ fn main() -> Result<()> {
       let selected_style = Style::default().fg(Color::Green);
       let normal_style = Style::default().fg(Color::White);
 
+      log_page_size = (chunks[0].height - 1) as u64;
+
       let mut stmt = conn
         .prepare(&format!(
           "SELECT time, pid, level, channel, message FROM log WHERE level IN ({}) LIMIT (?) OFFSET (?)",
@@ -105,18 +109,15 @@ fn main() -> Result<()> {
         ))
         .unwrap();
       let log_iter = stmt
-        .query_map(
-          params![(chunks[0].height - 1).to_string(), app.offset.to_string()],
-          |row| {
-            Ok(Log {
-              time: row.get(0)?,
-              pid: row.get(1)?,
-              level: row.get(2)?,
-              channel: row.get(3)?,
-              message: row.get(4)?,
-            })
-          },
-        )
+        .query_map(params![log_page_size.to_string(), app.offset.to_string()], |row| {
+          Ok(Log {
+            time: row.get(0)?,
+            pid: row.get(1)?,
+            level: row.get(2)?,
+            channel: row.get(3)?,
+            message: row.get(4)?,
+          })
+        })
         .unwrap();
       let logs: Vec<[String; 3]> = log_iter
         .map(|l| l.unwrap())
@@ -200,6 +201,11 @@ fn main() -> Result<()> {
         Some(x) => app.selected = x,
         None => app.selected = 0,
       },
+      Some(Action::NextPageLogs) => app.offset += log_page_size,
+      Some(Action::PrevPageLogs) => match app.offset.checked_sub(log_page_size) {
+        Some(x) => app.offset = x,
+        None => app.selected = 0,
+      },
       Some(Action::TopLog) => {
         app.offset = 0;
       }
@@ -230,6 +236,8 @@ fn main() -> Result<()> {
 enum Action {
   NextLog,
   PrevLog,
+  NextPageLogs,
+  PrevPageLogs,
   TopLog,
   BottomLog,
   ToggleInfo,
@@ -251,11 +259,35 @@ fn block_wait_action() -> Option<Action> {
       Event::Key(KeyEvent {
         code: KeyCode::Char('j'),
         modifiers: _,
+      })
+      | Event::Key(KeyEvent {
+        code: KeyCode::Down,
+        modifiers: _,
       }) => break Some(Action::NextLog),
       Event::Key(KeyEvent {
         code: KeyCode::Char('k'),
         modifiers: _,
+      })
+      | Event::Key(KeyEvent {
+        code: KeyCode::Up,
+        modifiers: _,
       }) => break Some(Action::PrevLog),
+      Event::Key(KeyEvent {
+        code: KeyCode::Char('l'),
+        modifiers: _,
+      })
+      | Event::Key(KeyEvent {
+        code: KeyCode::Right,
+        modifiers: _,
+      }) => break Some(Action::NextPageLogs),
+      Event::Key(KeyEvent {
+        code: KeyCode::Char('h'),
+        modifiers: _,
+      })
+      | Event::Key(KeyEvent {
+        code: KeyCode::Left,
+        modifiers: _,
+      }) => break Some(Action::PrevPageLogs),
       Event::Key(KeyEvent {
         code: KeyCode::Home,
         modifiers: _,
