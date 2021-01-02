@@ -131,7 +131,7 @@ fn main() -> Result<()> {
         .collect();
       let rows = logs
         .iter()
-        .map(|log| Row::new(log.iter().map(|txt| Cell::from(txt.clone()).style(normal_style))));
+        .map(|log| Row::new(log.iter().map(|txt| Cell::from(txt.as_ref()).style(normal_style))));
 
       let t = Table::new(rows)
         .header(Row::new(vec!["   Time", "Pid", "Message"]).style(Style::default().fg(Color::Yellow)))
@@ -144,8 +144,12 @@ fn main() -> Result<()> {
       ts.select(Some(app.selected));
       f.render_stateful_widget(t, chunks[0], &mut ts);
 
-      let msg = logs.get(app.selected).unwrap()[2].clone();
-      let msg_disp = Paragraph::new(Text::from(msg.as_ref()))
+      let msg = match logs.get(app.selected) {
+        Some(log) => log[2].as_ref(),
+        None => "",
+      };
+
+      let msg_disp = Paragraph::new(Text::from(msg))
         .style(Style::default().fg(Color::White))
         .block(Block::default().borders(Borders::TOP))
         .alignment(Alignment::Left)
