@@ -5,10 +5,7 @@ use crossterm::{
   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use rusqlite::{params, Connection, OpenFlags};
-use std::{
-  env,
-  io::{stdout, Write},
-};
+use std::{env, io::stdout};
 use tui::{
   backend::CrosstermBackend,
   layout::{Alignment, Constraint, Direction, Layout},
