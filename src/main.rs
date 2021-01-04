@@ -15,11 +15,14 @@ use tui::{
   Terminal,
 };
 
+mod input;
+use input::Action;
+
 #[derive(Debug)]
 struct App {
   offset: u64,
   count: usize,
-  selected: usize, // TODO: deal with empty result
+  selected: usize,
   message_height: u32,
   // levels
   info: bool,
@@ -88,6 +91,9 @@ fn main() -> Result<()> {
   terminal.hide_cursor()?;
   terminal.clear()?;
 
+  let selected_style = Style::default().fg(Color::Green);
+  let normal_style = Style::default().fg(Color::White);
+
   loop {
     let mut log_page_size = 0;
 
@@ -96,9 +102,6 @@ fn main() -> Result<()> {
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(5), Constraint::Length(10), Constraint::Length(3)].as_ref())
         .split(f.size());
-
-      let selected_style = Style::default().fg(Color::Green);
-      let normal_style = Style::default().fg(Color::White);
 
       log_page_size = (chunks[0].height - 1) as u64;
 
@@ -184,7 +187,7 @@ fn main() -> Result<()> {
       app.count = logs.len();
     })?;
 
-    match block_wait_action() {
+    match input::block_wait_action() {
       Some(Action::Quit) => {
         disable_raw_mode()?;
         execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -231,89 +234,4 @@ fn main() -> Result<()> {
   }
 
   Ok(())
-}
-
-enum Action {
-  NextLog,
-  PrevLog,
-  NextPageLogs,
-  PrevPageLogs,
-  TopLog,
-  BottomLog,
-  ToggleInfo,
-  ToggleNotice,
-  ToggleWarning,
-  ToggleError,
-  Quit,
-}
-
-fn block_wait_action() -> Option<Action> {
-  use crossterm::event::{read, Event, KeyCode, KeyEvent};
-
-  loop {
-    match read().unwrap() {
-      Event::Key(KeyEvent {
-        code: KeyCode::Char('q'),
-        modifiers: _,
-      }) => break Some(Action::Quit),
-      Event::Key(KeyEvent {
-        code: KeyCode::Char('j'),
-        modifiers: _,
-      })
-      | Event::Key(KeyEvent {
-        code: KeyCode::Down,
-        modifiers: _,
-      }) => break Some(Action::NextLog),
-      Event::Key(KeyEvent {
-        code: KeyCode::Char('k'),
-        modifiers: _,
-      })
-      | Event::Key(KeyEvent {
-        code: KeyCode::Up,
-        modifiers: _,
-      }) => break Some(Action::PrevLog),
-      Event::Key(KeyEvent {
-        code: KeyCode::Char('l'),
-        modifiers: _,
-      })
-      | Event::Key(KeyEvent {
-        code: KeyCode::Right,
-        modifiers: _,
-      }) => break Some(Action::NextPageLogs),
-      Event::Key(KeyEvent {
-        code: KeyCode::Char('h'),
-        modifiers: _,
-      })
-      | Event::Key(KeyEvent {
-        code: KeyCode::Left,
-        modifiers: _,
-      }) => break Some(Action::PrevPageLogs),
-      Event::Key(KeyEvent {
-        code: KeyCode::Home,
-        modifiers: _,
-      }) => break Some(Action::TopLog),
-      Event::Key(KeyEvent {
-        code: KeyCode::End,
-        modifiers: _,
-      }) => break Some(Action::BottomLog),
-      Event::Key(KeyEvent {
-        code: KeyCode::Char('1'),
-        modifiers: _,
-      }) => break Some(Action::ToggleInfo),
-      Event::Key(KeyEvent {
-        code: KeyCode::Char('2'),
-        modifiers: _,
-      }) => break Some(Action::ToggleNotice),
-      Event::Key(KeyEvent {
-        code: KeyCode::Char('3'),
-        modifiers: _,
-      }) => break Some(Action::ToggleWarning),
-      Event::Key(KeyEvent {
-        code: KeyCode::Char('4'),
-        modifiers: _,
-      }) => break Some(Action::ToggleError),
-      Event::Resize(_, _) => break None,
-      _ => {}
-    }
-  }
 }
