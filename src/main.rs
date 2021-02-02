@@ -115,8 +115,8 @@ fn main() -> Result<()> {
         })
         .unwrap();
       let logs: Vec<[String; 3]> = log_iter
-        .map(|l| l.unwrap())
-        .map(|log| {
+        .map(|l| {
+          let log = l.unwrap();
           let dt = NaiveDateTime::from_timestamp(log.time.floor() as i64, 0);
           [
             dt.format("%Y-%m-%d %H:%M:%S").to_string(),
@@ -126,8 +126,7 @@ fn main() -> Result<()> {
         })
         .collect();
 
-      ui.render_logs_table(f, &logs);
-      ui.select_log(app.selected);
+      ui.render_logs_table(f, &logs, app.selected);
 
       let msg = match logs.get(app.selected) {
         Some(log) => log[2].as_ref(),

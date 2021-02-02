@@ -10,7 +10,6 @@ use tui::{
 #[derive(Debug)]
 pub struct Ui {
   chunks: Vec<Rect>,
-  logs_table: TableState,
   normal_style: Style,
   selected_style: Style,
 }
@@ -19,7 +18,6 @@ impl Ui {
   pub fn new() -> Self {
     Self {
       chunks: vec![],
-      logs_table: TableState::default(),
       normal_style: Style::default().fg(Color::White),
       selected_style: Style::default().fg(Color::Green),
     }
@@ -43,7 +41,7 @@ impl Ui {
     self.chunks[0].height - 1
   }
 
-  pub fn render_logs_table<B: Backend>(&mut self, frame: &mut Frame<B>, logs: &Vec<[String; 3]>) {
+  pub fn render_logs_table<B: Backend>(&mut self, frame: &mut Frame<B>, logs: &Vec<[String; 3]>, selected: usize) {
     let rows = logs
       .iter()
       .map(|log| Row::new(log.iter().map(|txt| Cell::from(txt.as_ref()).style(self.normal_style))));
@@ -55,11 +53,9 @@ impl Ui {
       .highlight_symbol(">> ")
       .widths(&[Constraint::Length(23), Constraint::Length(8), Constraint::Min(10)]);
 
-    frame.render_stateful_widget(t, self.chunks[0], &mut self.logs_table);
-  }
-
-  pub fn select_log(&mut self, index: usize) {
-    self.logs_table.select(Some(index));
+    let mut ts = TableState::default();
+    ts.select(Some(selected));
+    frame.render_stateful_widget(t, self.chunks[0], &mut ts);
   }
 
   pub fn render_log_message<B: Backend>(&self, frame: &mut Frame<B>, msg: &str) {
