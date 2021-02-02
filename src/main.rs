@@ -23,12 +23,13 @@ struct App {
   offset: u64,
   count: usize,
   selected: usize,
-  message_height: u32,
-  // levels
+  message_height: u16,
+  // log levels
   info: bool,
   notice: bool,
   warning: bool,
   error: bool,
+  // focus (enum)
 }
 
 impl Default for App {
@@ -100,7 +101,14 @@ fn main() -> Result<()> {
     terminal.draw(|f| {
       let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(5), Constraint::Length(10), Constraint::Length(3)].as_ref())
+        .constraints(
+          [
+            Constraint::Min(5),
+            Constraint::Length(app.message_height),
+            Constraint::Length(3),
+          ]
+          .as_ref(),
+        )
         .split(f.size());
 
       log_page_size = (chunks[0].height - 1) as u64;
@@ -226,6 +234,12 @@ fn main() -> Result<()> {
       }
       Some(Action::ToggleError) => {
         app.error ^= true;
+      }
+      Some(Action::IncMessageHeight) => {
+        app.message_height += 3;
+      }
+      Some(Action::DecMessageHeight) => {
+        app.message_height -= 3;
       }
       None => {
         // handle resize event
