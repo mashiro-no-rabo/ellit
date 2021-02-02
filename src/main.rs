@@ -6,17 +6,12 @@ use crossterm::{
 };
 use rusqlite::{params, Connection, OpenFlags};
 use std::{env, io::stdout};
-use tui::{
-  backend::CrosstermBackend,
-  layout::{Alignment, Constraint, Direction, Layout},
-  style::{Color, Style},
-  text::{Span, Text},
-  widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState, Tabs, Wrap},
-  Terminal,
-};
+use tui::{backend::CrosstermBackend, Terminal};
 
 mod input;
 use input::Action;
+
+mod ui;
 
 #[derive(Debug)]
 struct App {
@@ -48,7 +43,7 @@ impl Default for App {
 }
 
 impl App {
-  fn levels(&self) -> String {
+  fn levels_sql(&self) -> String {
     let mut lvls = vec![];
     if self.info {
       lvls.push("0");
@@ -92,31 +87,20 @@ fn main() -> Result<()> {
   terminal.hide_cursor()?;
   terminal.clear()?;
 
-  let selected_style = Style::default().fg(Color::Green);
-  let normal_style = Style::default().fg(Color::White);
+  let mut ui = ui::Ui::new();
 
   loop {
     let mut log_page_size = 0;
 
     terminal.draw(|f| {
-      let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-          [
-            Constraint::Min(5),
-            Constraint::Length(app.message_height),
-            Constraint::Length(3),
-          ]
-          .as_ref(),
-        )
-        .split(f.size());
+      ui.resize_main(app.message_height, f.size());
 
-      log_page_size = (chunks[0].height - 1) as u64;
+      log_page_size = ui.log_page_size() as u64;
 
       let mut stmt = conn
         .prepare(&format!(
           "SELECT time, pid, level, channel, message FROM log WHERE level IN ({}) LIMIT (?) OFFSET (?)",
-          app.levels()
+          app.levels_sql()
         ))
         .unwrap();
       let log_iter = stmt
@@ -141,56 +125,17 @@ fn main() -> Result<()> {
           ]
         })
         .collect();
-      let rows = logs
-        .iter()
-        .map(|log| Row::new(log.iter().map(|txt| Cell::from(txt.as_ref()).style(normal_style))));
 
-      let t = Table::new(rows)
-        .header(Row::new(vec!["   Time", "Pid", "Message"]).style(Style::default().fg(Color::Yellow)))
-        .column_spacing(1)
-        .highlight_style(selected_style)
-        .highlight_symbol(">> ")
-        .widths(&[Constraint::Length(23), Constraint::Length(8), Constraint::Min(10)]);
-
-      let mut ts = TableState::default();
-      ts.select(Some(app.selected));
-      f.render_stateful_widget(t, chunks[0], &mut ts);
+      ui.render_logs_table(f, &logs);
+      ui.select_log(app.selected);
 
       let msg = match logs.get(app.selected) {
         Some(log) => log[2].as_ref(),
         None => "",
       };
+      ui.render_log_message(f, msg);
 
-      let msg_disp = Paragraph::new(Text::from(msg))
-        .style(Style::default().fg(Color::White))
-        .block(Block::default().borders(Borders::TOP))
-        .alignment(Alignment::Left)
-        .wrap(Wrap { trim: true });
-      f.render_widget(msg_disp, chunks[1]);
-
-      let mut lvls = vec![];
-      if app.info {
-        lvls.push(Span::styled("[1] INFO", Style::default().bg(Color::Gray).fg(Color::White)).into())
-      } else {
-        lvls.push(Span::raw("[1] INFO").into())
-      }
-      if app.notice {
-        lvls.push(Span::styled("[2] NOTICE", Style::default().bg(Color::Cyan).fg(Color::Black)).into())
-      } else {
-        lvls.push(Span::raw("[2] NOTICE").into())
-      }
-      if app.warning {
-        lvls.push(Span::styled("[3] WARN", Style::default().bg(Color::Yellow).fg(Color::White)).into())
-      } else {
-        lvls.push(Span::raw("[3] WARN").into())
-      }
-      if app.error {
-        lvls.push(Span::styled("[4] ERROR", Style::default().bg(Color::Red).fg(Color::White)).into())
-      } else {
-        lvls.push(Span::raw("[4] ERROR").into())
-      }
-      let tabs = Tabs::new(lvls).block(Block::default().title(" Ellit ").borders(Borders::ALL));
-      f.render_widget(tabs, chunks[2]);
+      ui.render_level_filter(f, app.info, app.notice, app.warning, app.error);
 
       app.count = logs.len();
     })?;
