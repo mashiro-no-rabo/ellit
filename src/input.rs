@@ -11,6 +11,7 @@ pub enum Action {
   ToggleError,
   IncMessageHeight,
   DecMessageHeight,
+  ToggleFocus,
   Quit,
 }
 
@@ -54,6 +55,7 @@ pub fn block_wait_action() -> Option<Action> {
       key!('4') => break Some(Action::ToggleError),
       key!('=') | key!('+') => break Some(Action::IncMessageHeight),
       key!('-') | key!('_') => break Some(Action::DecMessageHeight),
+      kc!(Tab) => break Some(Action::ToggleFocus),
       Resize(_, _) => break None,
       _ => {}
     }

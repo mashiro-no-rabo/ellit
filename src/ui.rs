@@ -7,29 +7,38 @@ use tui::{
   Frame,
 };
 
+use crate::app::LogLevels;
+
 #[derive(Debug)]
 pub struct Ui {
   chunks: Vec<Rect>,
+  pub message_height: u16,
+  pub selected: usize,
+
   normal_style: Style,
   selected_style: Style,
 }
 
-impl Ui {
-  pub fn new() -> Self {
+impl Default for Ui {
+  fn default() -> Self {
     Self {
       chunks: vec![],
+      message_height: 10,
+      selected: 0,
       normal_style: Style::default().fg(Color::White),
       selected_style: Style::default().fg(Color::Green),
     }
   }
+}
 
-  pub fn resize_main(&mut self, msg_height: u16, area: Rect) {
+impl Ui {
+  pub fn resize_main(&mut self, area: Rect) {
     self.chunks = Layout::default()
       .direction(Direction::Vertical)
       .constraints(
         [
           Constraint::Min(5),
-          Constraint::Length(msg_height),
+          Constraint::Length(self.message_height),
           Constraint::Length(3),
         ]
         .as_ref(),
@@ -38,36 +47,48 @@ impl Ui {
   }
 
   pub fn log_page_size(&self) -> u16 {
-    self.chunks[0].height - 1
+    // title uses 1 line, border uses 2 lines vertically
+    self.chunks[0].height - 3
   }
 
-  pub fn render_logs_table<B: Backend>(&mut self, frame: &mut Frame<B>, logs: &Vec<[String; 3]>, selected: usize) {
+  pub fn render_logs_table<B: Backend>(&mut self, frame: &mut Frame<B>, logs: &Vec<[String; 3]>, in_focus: bool) {
     let rows = logs
       .iter()
       .map(|log| Row::new(log.iter().map(|txt| Cell::from(txt.as_ref()).style(self.normal_style))));
 
+    let mut blk = Block::default().borders(Borders::ALL);
+    if in_focus {
+      blk = blk.border_style(self.selected_style);
+    }
+
     let t = Table::new(rows)
       .header(Row::new(vec!["   Time", "Pid", "Message"]).style(Style::default().fg(Color::Yellow)))
+      .block(blk)
       .column_spacing(1)
       .highlight_style(self.selected_style)
       .highlight_symbol(">> ")
       .widths(&[Constraint::Length(23), Constraint::Length(8), Constraint::Min(10)]);
 
     let mut ts = TableState::default();
-    ts.select(Some(selected));
+    ts.select(Some(self.selected));
     frame.render_stateful_widget(t, self.chunks[0], &mut ts);
   }
 
-  pub fn render_log_message<B: Backend>(&self, frame: &mut Frame<B>, msg: &str) {
+  pub fn render_log_message<B: Backend>(&self, frame: &mut Frame<B>, msg: &str, in_focus: bool) {
+    let mut blk = Block::default().borders(Borders::ALL);
+    if in_focus {
+      blk = blk.border_style(self.selected_style);
+    }
+
     let msg_disp = Paragraph::new(Text::from(msg))
       .style(Style::default().fg(Color::White))
-      .block(Block::default().borders(Borders::TOP))
+      .block(blk)
       .alignment(Alignment::Left)
       .wrap(Wrap { trim: true });
     frame.render_widget(msg_disp, self.chunks[1]);
   }
 
-  pub fn render_level_filter<B: Backend>(&self, frame: &mut Frame<B>, i: bool, n: bool, w: bool, e: bool) {
+  pub fn render_level_filter<B: Backend>(&self, frame: &mut Frame<B>, (i, n, w, e): LogLevels) {
     let mut lvls = vec![];
     if i {
       lvls.push(Span::styled("[1] INFO", Style::default().bg(Color::Gray).fg(Color::White)).into())

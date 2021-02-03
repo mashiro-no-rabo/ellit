@@ -8,58 +8,13 @@ use rusqlite::{params, Connection, OpenFlags};
 use std::{env, io::stdout};
 use tui::{backend::CrosstermBackend, Terminal};
 
+mod app;
 mod input;
-use input::Action;
-
 mod ui;
 
-#[derive(Debug)]
-struct App {
-  offset: u64,
-  count: usize,
-  selected: usize,
-  message_height: u16,
-  // log levels
-  info: bool,
-  notice: bool,
-  warning: bool,
-  error: bool,
-  // focus (enum)
-}
-
-impl Default for App {
-  fn default() -> Self {
-    Self {
-      offset: 0,
-      count: 0,
-      selected: 0,
-      message_height: 10,
-      info: false,
-      notice: false,
-      warning: true,
-      error: true,
-    }
-  }
-}
-
-impl App {
-  fn levels_sql(&self) -> String {
-    let mut lvls = vec![];
-    if self.info {
-      lvls.push("0");
-    }
-    if self.notice {
-      lvls.push("1");
-    }
-    if self.warning {
-      lvls.push("2");
-    }
-    if self.error {
-      lvls.push("3");
-    }
-    lvls.join(",")
-  }
-}
+use app::{App, Focus};
+use input::Action;
+use ui::Ui;
 
 #[derive(Debug)]
 struct Log {
@@ -75,6 +30,7 @@ fn main() -> Result<()> {
     Some(p) => p,
     None => bail!("Usage: ellit [path to .lsw file]"),
   };
+
   let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
   let mut app = App::default();
 
@@ -87,13 +43,13 @@ fn main() -> Result<()> {
   terminal.hide_cursor()?;
   terminal.clear()?;
 
-  let mut ui = ui::Ui::new();
+  let mut ui = Ui::default();
 
   loop {
     let mut log_page_size = 0;
 
     terminal.draw(|f| {
-      ui.resize_main(app.message_height, f.size());
+      ui.resize_main(f.size());
 
       log_page_size = ui.log_page_size() as u64;
 
@@ -126,15 +82,15 @@ fn main() -> Result<()> {
         })
         .collect();
 
-      ui.render_logs_table(f, &logs, app.selected);
+      ui.render_logs_table(f, &logs, app.focus == Focus::App);
 
-      let msg = match logs.get(app.selected) {
+      let msg = match logs.get(ui.selected) {
         Some(log) => log[2].as_ref(),
         None => "",
       };
-      ui.render_log_message(f, msg);
+      ui.render_log_message(f, msg, app.focus == Focus::MsgDisplay);
 
-      ui.render_level_filter(f, app.info, app.notice, app.warning, app.error);
+      ui.render_level_filter(f, app.log_levels);
 
       app.count = logs.len();
     })?;
@@ -147,19 +103,19 @@ fn main() -> Result<()> {
         break;
       }
       Some(Action::NextLog) => {
-        app.selected += 1;
-        if app.selected >= app.count {
-          app.selected = app.count - 1
+        ui.selected += 1;
+        if ui.selected >= app.count {
+          ui.selected = app.count - 1
         }
       }
-      Some(Action::PrevLog) => match app.selected.checked_sub(1) {
-        Some(x) => app.selected = x,
-        None => app.selected = 0,
+      Some(Action::PrevLog) => match ui.selected.checked_sub(1) {
+        Some(x) => ui.selected = x,
+        None => ui.selected = 0,
       },
       Some(Action::NextPageLogs) => app.offset += log_page_size,
       Some(Action::PrevPageLogs) => match app.offset.checked_sub(log_page_size) {
         Some(x) => app.offset = x,
-        None => app.selected = 0,
+        None => ui.selected = 0,
       },
       Some(Action::TopLog) => {
         app.offset = 0;
@@ -168,22 +124,29 @@ fn main() -> Result<()> {
         //
       }
       Some(Action::ToggleInfo) => {
-        app.info ^= true;
+        app.log_levels.0 ^= true;
       }
       Some(Action::ToggleNotice) => {
-        app.notice ^= true;
+        app.log_levels.1 ^= true;
       }
       Some(Action::ToggleWarning) => {
-        app.warning ^= true;
+        app.log_levels.2 ^= true;
       }
       Some(Action::ToggleError) => {
-        app.error ^= true;
+        app.log_levels.3 ^= true;
       }
       Some(Action::IncMessageHeight) => {
-        app.message_height += 3;
+        ui.message_height += 3;
       }
       Some(Action::DecMessageHeight) => {
-        app.message_height -= 3;
+        ui.message_height -= 3;
+      }
+      Some(Action::ToggleFocus) => {
+        if app.focus == Focus::App {
+          app.focus = Focus::MsgDisplay;
+        } else {
+          app.focus = Focus::App;
+        }
       }
       None => {
         // handle resize event
