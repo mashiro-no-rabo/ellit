@@ -1,29 +1,20 @@
 use anyhow::{bail, Result};
-use chrono::NaiveDateTime;
 use crossterm::{
   execute,
   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use rusqlite::{params, Connection, OpenFlags};
 use std::{env, io::stdout};
 use tui::{backend::CrosstermBackend, Terminal};
 
 mod app;
 mod input;
+mod logs;
 mod ui;
 
 use app::{App, Focus};
 use input::Action;
+use logs::Storage;
 use ui::Ui;
-
-#[derive(Debug)]
-struct Log {
-  time: f64,
-  pid: u32,
-  level: u8,
-  channel: String,
-  message: String,
-}
 
 fn main() -> Result<()> {
   let path = match env::args().nth(1) {
@@ -31,7 +22,7 @@ fn main() -> Result<()> {
     None => bail!("Usage: ellit [path to .lsw file]"),
   };
 
-  let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+  let mut store = Storage::open(&path)?;
   let mut app = App::default();
 
   // setup terminal
@@ -49,38 +40,14 @@ fn main() -> Result<()> {
     let mut log_page_size = 0;
 
     terminal.draw(|f| {
-      ui.resize_main(f.size());
+      ui.build(f.size());
 
       log_page_size = ui.log_page_size() as u64;
 
-      let mut stmt = conn
-        .prepare(&format!(
-          "SELECT time, pid, level, channel, message FROM log WHERE level IN ({}) LIMIT (?) OFFSET (?)",
-          app.levels_sql()
-        ))
-        .unwrap();
-      let log_iter = stmt
-        .query_map(params![log_page_size.to_string(), app.offset.to_string()], |row| {
-          Ok(Log {
-            time: row.get(0)?,
-            pid: row.get(1)?,
-            level: row.get(2)?,
-            channel: row.get(3)?,
-            message: row.get(4)?,
-          })
-        })
-        .unwrap();
-      let logs: Vec<[String; 3]> = log_iter
-        .map(|l| {
-          let log = l.unwrap();
-          let dt = NaiveDateTime::from_timestamp(log.time.floor() as i64, 0);
-          [
-            dt.format("%Y-%m-%d %H:%M:%S").to_string(),
-            log.pid.to_string(),
-            log.message,
-          ]
-        })
-        .collect();
+      store.set_page_size(log_page_size);
+      store.set_levels_filter(app.levels_sql());
+
+      let logs = store.logs_table();
 
       ui.render_logs_table(f, &logs, app.focus == Focus::App);
 
@@ -96,61 +63,57 @@ fn main() -> Result<()> {
     })?;
 
     match input::block_wait_action() {
-      Some(Action::Quit) => {
+      Action::Quit => {
         disable_raw_mode()?;
         execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
         terminal.show_cursor()?;
         break;
       }
-      Some(Action::NextLog) => {
+      Action::NextLog => {
         ui.selected += 1;
         if ui.selected >= app.count {
           ui.selected = app.count - 1
         }
       }
-      Some(Action::PrevLog) => match ui.selected.checked_sub(1) {
+      Action::PrevLog => match ui.selected.checked_sub(1) {
         Some(x) => ui.selected = x,
         None => ui.selected = 0,
       },
-      Some(Action::NextPageLogs) => app.offset += log_page_size,
-      Some(Action::PrevPageLogs) => match app.offset.checked_sub(log_page_size) {
+      Action::NextPageLogs => app.offset += log_page_size,
+      Action::PrevPageLogs => match app.offset.checked_sub(log_page_size) {
         Some(x) => app.offset = x,
         None => ui.selected = 0,
       },
-      Some(Action::TopLog) => {
-        app.offset = 0;
+      Action::TopLog => {
+        ui.selected = 0;
       }
-      Some(Action::BottomLog) => {
-        //
-      }
-      Some(Action::ToggleInfo) => {
+      Action::BottomLog => ui.selected = app.count.min(log_page_size as usize),
+      Action::ToggleInfo => {
         app.log_levels.0 ^= true;
       }
-      Some(Action::ToggleNotice) => {
+      Action::ToggleNotice => {
         app.log_levels.1 ^= true;
       }
-      Some(Action::ToggleWarning) => {
+      Action::ToggleWarning => {
         app.log_levels.2 ^= true;
       }
-      Some(Action::ToggleError) => {
+      Action::ToggleError => {
         app.log_levels.3 ^= true;
       }
-      Some(Action::IncMessageHeight) => {
+      Action::IncMessageHeight => {
         ui.message_height += 3;
       }
-      Some(Action::DecMessageHeight) => {
+      Action::DecMessageHeight => {
         ui.message_height -= 3;
       }
-      Some(Action::ToggleFocus) => {
+      Action::ToggleFocus => {
         if app.focus == Focus::App {
           app.focus = Focus::MsgDisplay;
         } else {
           app.focus = Focus::App;
         }
       }
-      None => {
-        // handle resize event
-      }
+      Action::Resize => {}
     }
   }
 

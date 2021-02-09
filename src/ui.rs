@@ -32,7 +32,7 @@ impl Default for Ui {
 }
 
 impl Ui {
-  pub fn resize_main(&mut self, area: Rect) {
+  pub fn build(&mut self, area: Rect) {
     self.chunks = Layout::default()
       .direction(Direction::Vertical)
       .constraints(

@@ -1,3 +1,9 @@
+use crossterm::event::{
+  read,
+  Event::{Key, Resize},
+  KeyCode, KeyEvent,
+};
+
 pub enum Action {
   NextLog,
   PrevLog,
@@ -12,6 +18,7 @@ pub enum Action {
   IncMessageHeight,
   DecMessageHeight,
   ToggleFocus,
+  Resize,
   Quit,
 }
 
@@ -33,31 +40,29 @@ macro_rules! kc {
   };
 }
 
-pub fn block_wait_action() -> Option<Action> {
-  use crossterm::event::{
-    read,
-    Event::{Key, Resize},
-    KeyCode, KeyEvent,
-  };
-
+pub fn block_wait_action() -> Action {
   loop {
-    match read().unwrap() {
-      key!('q') => break Some(Action::Quit),
-      key!('j') | kc!(Down) => break Some(Action::NextLog),
-      key!('k') | kc!(Up) => break Some(Action::PrevLog),
-      key!('l') | kc!(Right) => break Some(Action::NextPageLogs),
-      key!('h') | kc!(Left) => break Some(Action::PrevPageLogs),
-      kc!(Home) => break Some(Action::TopLog),
-      kc!(End) => break Some(Action::BottomLog),
-      key!('1') => break Some(Action::ToggleInfo),
-      key!('2') => break Some(Action::ToggleNotice),
-      key!('3') => break Some(Action::ToggleWarning),
-      key!('4') => break Some(Action::ToggleError),
-      key!('=') | key!('+') => break Some(Action::IncMessageHeight),
-      key!('-') | key!('_') => break Some(Action::DecMessageHeight),
-      kc!(Tab) => break Some(Action::ToggleFocus),
-      Resize(_, _) => break None,
-      _ => {}
+    let x = match read().unwrap() {
+      key!('q') => Some(Action::Quit),
+      key!('j') | kc!(Down) => Some(Action::NextLog),
+      key!('k') | kc!(Up) => Some(Action::PrevLog),
+      key!('l') | kc!(Right) => Some(Action::NextPageLogs),
+      key!('h') | kc!(Left) => Some(Action::PrevPageLogs),
+      kc!(Home) => Some(Action::TopLog),
+      kc!(End) => Some(Action::BottomLog),
+      key!('1') => Some(Action::ToggleInfo),
+      key!('2') => Some(Action::ToggleNotice),
+      key!('3') => Some(Action::ToggleWarning),
+      key!('4') => Some(Action::ToggleError),
+      key!('=') | key!('+') => Some(Action::IncMessageHeight),
+      key!('-') | key!('_') => Some(Action::DecMessageHeight),
+      kc!(Tab) => Some(Action::ToggleFocus),
+      Resize(_, _) => Some(Action::Resize),
+      _ => None,
+    };
+
+    if x.is_some() {
+      break x.unwrap();
     }
   }
 }
