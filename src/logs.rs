@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::NaiveDateTime;
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{params, Connection, OpenFlags, NO_PARAMS};
 
 #[derive(Debug)]
 pub struct Storage {
@@ -10,6 +10,7 @@ pub struct Storage {
   offset: u64,
   levels: String,
   logs: Vec<Log>,
+  filtered_count: u32,
 }
 
 #[derive(Debug)]
@@ -30,6 +31,7 @@ impl Storage {
       offset: 0,
       levels: "".to_string(),
       logs: vec![],
+      filtered_count: 0,
     })
   }
 
@@ -43,6 +45,13 @@ impl Storage {
   pub fn set_levels_filter(&mut self, lvls: String) {
     if self.levels != lvls {
       self.levels = lvls;
+      self.outdated = true;
+    }
+  }
+
+  pub fn set_offset(&mut self, ofst: u64) {
+    if self.offset != ofst {
+      self.offset = ofst;
       self.outdated = true;
     }
   }
@@ -70,9 +79,19 @@ impl Storage {
       .map(|l| l.unwrap())
       .collect();
 
+    self.filtered_count = self
+      .conn
+      .query_row(
+        &format!("SELECT COUNT(*) FROM log WHERE level IN ({})", self.levels),
+        NO_PARAMS,
+        |r| r.get(0),
+      )
+      .unwrap();
+
     self.outdated = false;
   }
 
+  // TODO: return referenced data
   pub fn logs_table(&mut self) -> Vec<[String; 3]> {
     if self.outdated {
       self.query();
@@ -86,7 +105,7 @@ impl Storage {
         [
           dt.format("%Y-%m-%d %H:%M:%S").to_string(),
           log.pid.to_string(),
-          log.message,
+          log.message.clone(),
         ]
       })
       .collect()

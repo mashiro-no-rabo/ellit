@@ -46,6 +46,7 @@ fn main() -> Result<()> {
 
       store.set_page_size(log_page_size);
       store.set_levels_filter(app.levels_sql());
+      store.set_offset(app.offset);
 
       let logs = store.logs_table();
 
