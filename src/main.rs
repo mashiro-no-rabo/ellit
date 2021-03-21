@@ -58,7 +58,7 @@ fn main() -> Result<()> {
       };
       ui.render_log_message(f, msg, app.focus == Focus::MsgDisplay);
 
-      ui.render_level_filter(f, app.log_levels);
+      ui.render_level_filter(f, app.log_levels, store.logs_count());
 
       app.count = logs.len();
     })?;

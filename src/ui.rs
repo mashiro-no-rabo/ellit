@@ -9,6 +9,8 @@ use tui::{
 
 use crate::app::LogLevels;
 
+// TODO: consume "Frame", allocate each loop, take "app state" reference
+
 #[derive(Debug)]
 pub struct Ui {
   chunks: Vec<Rect>,
@@ -88,7 +90,7 @@ impl Ui {
     frame.render_widget(msg_disp, self.chunks[1]);
   }
 
-  pub fn render_level_filter<B: Backend>(&self, frame: &mut Frame<B>, (i, n, w, e): LogLevels) {
+  pub fn render_level_filter<B: Backend>(&self, frame: &mut Frame<B>, (i, n, w, e): LogLevels, logs_cnt: u32) {
     let mut lvls = vec![];
     if i {
       lvls.push(Span::styled("[1] INFO", Style::default().bg(Color::Gray).fg(Color::White)).into())
@@ -110,7 +112,11 @@ impl Ui {
     } else {
       lvls.push(Span::raw("[4] ERROR").into())
     }
-    let tabs = Tabs::new(lvls).block(Block::default().title(" Ellit ").borders(Borders::ALL));
+    let tabs = Tabs::new(lvls).block(
+      Block::default()
+        .title(format!(" Ellit [total: {}]", logs_cnt))
+        .borders(Borders::ALL),
+    );
     frame.render_widget(tabs, self.chunks[2]);
   }
 }

@@ -2,6 +2,8 @@ use anyhow::Result;
 use chrono::NaiveDateTime;
 use rusqlite::{params, Connection, OpenFlags, NO_PARAMS};
 
+// TODO: just take a "app state" reference
+
 #[derive(Debug)]
 pub struct Storage {
   conn: Connection,
@@ -109,5 +111,13 @@ impl Storage {
         ]
       })
       .collect()
+  }
+
+  pub fn logs_count(&mut self) -> u32 {
+    if self.outdated {
+      self.query();
+    }
+
+    self.filtered_count
   }
 }
